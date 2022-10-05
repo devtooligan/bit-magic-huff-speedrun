@@ -1,0 +1,264 @@
+/* Interface */
+#define function and_(uint256, uint256) pure returns (uint256)
+#define function or_(uint256, uint256) pure returns (uint256)
+#define function xor_(uint256, uint256) pure returns (uint256)
+#define function not_(uint256) pure returns (uint256)
+#define function shl_(uint256, uint256) pure returns (uint256)
+#define function shr_(uint256, uint256) pure returns (uint256)
+#define function getLastNBits(uint256, uint256) pure returns (uint256)
+#define function getFirstNBits(uint256, uint256) pure returns (uint256)
+#define function getMostSignificantBit(uint256) pure returns (uint256)
+#define function isPowerOfTwo(uint256) pure returns (bool)
+#define function countSetBits(uint256) pure returns (uint256)
+#define function findNthBool(uint256, uint256) pure returns (bool)
+#define function setNthBool(uint256, uint256, bool) pure returns (uint256)
+
+/* Storage Slots */
+
+/* Methods */
+#define macro AND() = takes (0) returns (0) {
+    0x04 calldataload   // [a]
+    0x24 calldataload   // [b, a]
+    and                 // [a & b]
+    0x00 mstore         // []
+    0x20 0x00 return    // []
+}
+
+#define macro OR() = takes (0) returns (0) {
+    0x04 calldataload   // [a]
+    0x24 calldataload   // [b, a]
+    or                  // [a | b]
+    0x00 mstore         // []
+    0x20 0x00 return    // []
+}
+
+#define macro XOR() = takes (0) returns (0) {
+    0x04 calldataload   // [a]
+    0x24 calldataload   // [b, a]
+    xor                 // [a ^ b]
+    0x00 mstore         // []
+    0x20 0x00 return    // []
+}
+
+#define macro NOT() = takes (0) returns (0) {
+    0x04 calldataload   // [a]
+    not                 // [~a]
+    0x00 mstore         // []
+    0x20 0x00 return    // []
+}
+
+#define macro SHL() = takes (0) returns (0) {
+    0x04 calldataload   // [a]
+    0x24 calldataload   // [b, a]
+    shl                 // [a << b]
+    0x00 mstore         // []
+    0x20 0x00 return    // []
+}
+
+#define macro SHR() = takes (0) returns (0) {
+    0x04 calldataload   // [a]
+    0x24 calldataload   // [b, a]
+    shr                 // [a >> b]
+    0x00 mstore         // []
+    0x20 0x00 return    // []
+}
+
+#define macro GET_LAST_N_BITS() = takes (0) returns (0) {
+    0x04 calldataload   // [x]
+    0x1                 // [1, x]
+    0x1                 // [1, 1, x]
+    0x24 calldataload   // [n, 1, 1, x]
+    shl                 // [1 << n, 1, x]
+    sub                 // [1 << n - 1 == mask, x]
+    and                 // [x & mask]
+    0x00 mstore         // []
+    0x20 0x00 return    // []
+}
+
+#define macro GET_FIRST_N_BITS() = takes (0) returns (0) {
+    //todo: REFACTOR
+    0x04 calldataload           // [x]
+    0x24 calldataload           // [n, x]
+    0x04 calldataload           // [x, n, x]
+    _GET_MOST_SIGNIFICANT_BIT() // [msb, n, x]
+    sub                         // [msb - n, x]
+    0x1                         // [1, msb - n, x]
+    0x1                         // [1, 1, msb - n, x]
+    0x24 calldataload           // [n, 1, 1, msb - n, x]
+    shl                         // [1 << n, 1, msb - n, x]
+    sub                         // [1 << n - 1, msb - n, x]
+    swap1                       // [msb - n, 1 << n - 1, x]
+    shl                         // [(1 << n) - 1 << (msb - n), x]
+    and                         // [x & mask]
+    0x00 mstore
+    0x20 0x00 return
+}
+
+
+// see optimized solution https://ethereum.stackexchange.com/questions/8086/logarithm-math-operation-in-solidity/73682#73682
+#define macro _GET_MOST_SIGNIFICANT_BIT() = takes (1) returns (1) {
+    // [x]
+    0x00                  // [counter, x]
+    swap1                 // [x, counter]
+    begin_while:          // [x, counter]
+        swap1             // [counter, x]
+        0x01 add          // [counter + 1, x]
+        swap1             // [x, counter + 1]
+        0x1 shr           // [x >> 1, counter + 1]
+        dup1              // [x >> 1, x >> 1, counter + 1]
+        begin_while jumpi // [x >> 1, counter + 1]
+        pop               // [counter + 1]
+        0x01 swap1        // [counter + 1, 1]
+        sub               // [counter]
+}
+
+#define macro GET_MOST_SIGNIFICANT_BIT() = takes (0) returns (0) {
+    0x04 calldataload     // [x]
+    _GET_MOST_SIGNIFICANT_BIT()
+    0x00 mstore
+    0x20 0x00 return
+}
+
+#define macro IS_POWER_OF_TWO() = takes (0) returns (0) {
+    // return (x == 0) || ((x & (x - 1)) == 0);
+    // todo: REFACTOR!
+    0x04 calldataload     // [x]
+    dup1                  // [x, x]
+    iszero                // [x == 0, x]
+    iszero                // [x !=0, x]
+    notzero jumpi         // [x]
+    iszero 0x00 mstore    // [true]
+    ret jumpi             // [true]
+    notzero:
+        0x1                  // [1, x]
+        dup2                 // [x, 1, x]
+        sub                  // [x - 1, x]
+        and                   // [x & (x - 1)]
+        iszero                // [x & (x - 1) == 0]
+        0x00 mstore
+
+    ret:
+        0x20 0x00 return
+}
+
+#define macro COUNT_SET_BITS() = takes (0) returns (0) {
+    // uint count;
+    // while (x != 0) {
+    //     x = x & (x-1);
+    //     ++count;
+    // }
+    // return count;
+    0x00                  // [counter]
+    0x04 calldataload     // [x, counter]
+    begin_while:          // [x, counter]
+        dup1              // [x, x, counter]
+        iszero ret jumpi  // [x, counter]
+        swap1             // [counter, x]
+        0x01 add          // [counter + 1, x]
+        0x01              // [1, counter + 1, x]
+        dup3              // [x, 1, counter + 1, x]
+        sub               // [x - 1, counter + 1, x]
+        dup3              // [x, x - 1, counter + 1, x]
+        and               // [x & (x - 1) == newX, counter + 1, x]
+        dup1              // [newX, newX, counter + 1, x]
+        begin_while jumpi // [newX, counter + 1, x]
+        pop               // [counter + 1 == counter, x]
+        swap1             // [x, counter]
+    ret:                  // [x, counter]
+        pop               // [counter]
+        0x00 mstore       // [counter]
+        0x20 0x00 return
+}
+
+#define macro FIND_NTH_BOOL() = takes(0) returns (0) {
+    //return ((packedBool >> position) & 1 == 1);
+    0x04 calldataload     // [packedBool]
+    0x24 calldataload     // [position, packedBool]
+    shr                   // [packedBool >> position]
+    0x01 and              // [(packedBool >> position) & 1]
+    0x00 mstore           // []
+    0x20 0x00 return      // []
+}
+
+#define macro SET_NTH_BOOL() = takes(0) returns (0) {
+    // if (value) {
+    //     packedBool |= (1 << position);
+    // } else {
+    //     packedBool &= ~(1 << position);
+    // }
+    // return packedBool;
+    0x04 calldataload     // [packedBool]
+    0x01                  // [1, packedBool]
+    0x24 calldataload     // [position, 1, packedBool]
+    shl                   // [1 << position, packedBool]
+    0x44 calldataload     // [value, 1 << position, packedBool]
+    one jumpi             // [1 << position, packedBool]
+    not                   // [~(1 << position), packedBool]
+    and                   // [packedBool & ~(1 << position)]
+    ret jump              // [packedBool & ~(1 << position)]
+    one:                  // [1 << position, packedBool]
+        or                // [packedBool | (1 << position)]
+    ret:                  // [result]
+        0x00 mstore       // []
+        0x20 0x00 return  // []
+}
+
+#define macro MAIN() = takes (0) returns (0) {
+    // Identify which function is being called.
+    0x00 calldataload 0xE0 shr
+    dup1 __FUNC_SIG(and_) eq and_ jumpi
+    dup1 __FUNC_SIG(or_) eq or_ jumpi
+    dup1 __FUNC_SIG(xor_) eq xor_ jumpi
+    dup1 __FUNC_SIG(not_) eq not_ jumpi
+    dup1 __FUNC_SIG(shl_) eq shl_ jumpi
+    dup1 __FUNC_SIG(shr_) eq shr_ jumpi
+    dup1 __FUNC_SIG(getLastNBits) eq getLastNBits jumpi
+    dup1 __FUNC_SIG(getFirstNBits) eq getFirstNBits jumpi
+    dup1 __FUNC_SIG(getMostSignificantBit) eq getMostSignificantBit jumpi
+    dup1 __FUNC_SIG(isPowerOfTwo) eq isPowerOfTwo jumpi
+    dup1 __FUNC_SIG(countSetBits) eq countSetBits jumpi
+    dup1 __FUNC_SIG(findNthBool) eq findNthBool jumpi
+    dup1 __FUNC_SIG(setNthBool) eq setNthBool jumpi
+
+    0x00 0x00 revert
+
+    and_:
+        AND()
+
+    or_:
+        OR()
+
+    xor_:
+        XOR()
+
+    not_:
+        NOT()
+
+    shl_:
+        SHL()
+
+    shr_:
+        SHR()
+
+    getLastNBits:
+        GET_LAST_N_BITS()
+
+    getFirstNBits:
+        GET_FIRST_N_BITS()
+
+    getMostSignificantBit:
+        GET_MOST_SIGNIFICANT_BIT()
+
+    isPowerOfTwo:
+        IS_POWER_OF_TWO()
+
+    countSetBits:
+        COUNT_SET_BITS()
+
+    findNthBool:
+        FIND_NTH_BOOL()
+
+    setNthBool:
+        SET_NTH_BOOL()
+
+}
