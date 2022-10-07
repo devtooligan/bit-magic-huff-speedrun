@@ -12,6 +12,20 @@
 #define function countSetBits(uint256) pure returns (uint256)
 #define function findNthBool(uint256, uint256) pure returns (bool)
 #define function setNthBool(uint256, uint256, bool) pure returns (uint256)
+#define function sameSign(int256, int256) pure returns (bool)
+#define function invertSign(int256) pure returns (bool)
+#define function invertSign2(int256) pure returns (bool)
+#define function isEven(uint256) pure returns (bool)
+#define function rightMostUnsetBit(uint256) pure returns (uint256)
+#define function findPositionOfRightmostSetBit(uint256) pure returns (uint256)
+#define function findPositionOfRightmostSetBit_Negation(uint256) pure returns (uint256)
+#define function bitsToFlip(uint256, uint256) pure returns (uint256)
+#define function calculateXorToN(uint256) pure returns (uint256)
+#define function calculateXorToNEfficient(uint256) pure returns (uint256)
+#define function findSumEqualToXor(uint256) pure returns (uint256)
+#define function findSumEqualToXorEfficient(uint256) pure returns (uint256)
+#define function findMSB(uint256) pure returns (uint256)
+#define function addTwoNumbers(uint256, uint256) pure returns (uint256)
 
 /* Storage Slots */
 
@@ -101,15 +115,16 @@
     0x00                  // [counter, x]
     swap1                 // [x, counter]
     begin_while:          // [x, counter]
+        dup1              // [x, x, counter]
+        iszero            // [x == 0, x, counter]
+        end_while jumpi   // [x, counter]
         swap1             // [counter, x]
         0x01 add          // [counter + 1, x]
         swap1             // [x, counter + 1]
         0x1 shr           // [x >> 1, counter + 1]
-        dup1              // [x >> 1, x >> 1, counter + 1]
-        begin_while jumpi // [x >> 1, counter + 1]
-        pop               // [counter + 1]
-        0x01 swap1        // [counter + 1, 1]
-        sub               // [counter]
+        begin_while jump
+    end_while:            // [x, counter]
+        pop               // [counter]
 }
 
 #define macro GET_MOST_SIGNIFICANT_BIT() = takes (0) returns (0) {
@@ -141,15 +156,16 @@
         0x20 0x00 return
 }
 
-#define macro COUNT_SET_BITS() = takes (0) returns (0) {
+#define macro _COUNT_SET_BITS() = takes (1) returns (1) {
+    // [x]
     // uint count;
     // while (x != 0) {
     //     x = x & (x-1);
     //     ++count;
     // }
     // return count;
-    0x00                  // [counter]
-    0x04 calldataload     // [x, counter]
+    0x00                  // [counter, x]
+    swap1                 // [x, counter]
     begin_while:          // [x, counter]
         dup1              // [x, x, counter]
         iszero ret jumpi  // [x, counter]
@@ -166,8 +182,14 @@
         swap1             // [x, counter]
     ret:                  // [x, counter]
         pop               // [counter]
-        0x00 mstore       // [counter]
-        0x20 0x00 return
+}
+
+#define macro COUNT_SET_BITS() = takes (0) returns (0) {
+    0x00                  // [counter]
+    0x04 calldataload     // [x, counter]
+    _COUNT_SET_BITS()     // [counter]
+    0x00 mstore       // [counter]
+    0x20 0x00 return
 }
 
 #define macro FIND_NTH_BOOL() = takes(0) returns (0) {
@@ -203,6 +225,301 @@
         0x20 0x00 return  // []
 }
 
+#define constant INT256_MAX = 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+#define constant INT256_MIN = 0x8000000000000000000000000000000000000000000000000000000000000000
+
+#define macro SAME_SIGN() = takes (0) returns (0) {
+    // return (x ^ y) >= 0;
+    0x04 calldataload     // [x]
+    0x24 calldataload     // [y, x]
+    xor                   // [x ^ y]
+    [INT256_MIN]          // [INT256_MAX, x ^ y]
+    gt                    // [x ^ y >= INT256_MAX]
+    0x00 mstore           // []
+    0x20 0x00 return      // []
+}
+
+#define macro _INVERT_SIGN() = takes (1) returns (1) {
+    // [x]
+    not                   // [~x]
+    0x01 add              // [~x + 1]  two's complement
+}
+
+#define macro INVERT_SIGN() = takes (0) returns (0) {
+    // return -x;
+    0x04 calldataload     // [x]
+    _INVERT_SIGN()        // [-x]
+    0x00 mstore           // []
+    0x20 0x00 return      // []
+}
+
+#define macro IS_EVEN() = takes (0) returns (0) {
+    // return (x & 1) == 0;
+    0x04 calldataload     // [x]
+    0x01 and              // [x & 1]
+    iszero                // [x & 1 == 0]
+    0x00 mstore           // []
+    0x20 0x00 return      // []
+}
+
+#define macro _RIGHT_MOST_UNSET_BIT() = takes (1) returns (1) {
+    // [x]
+    0x01                  // [1, x]
+    dup2 sub              // [x - 1, x]
+    and                   // [x & (x - 1)]
+}
+
+#define macro RIGHT_MOST_UNSET_BIT() = takes (0) returns (0) {
+    // returns x & (x - 1);
+    0x04 calldataload       // [x]
+    _RIGHT_MOST_UNSET_BIT() // [rightMostUnsetBit]
+    0x00 mstore             // []
+    0x20 0x00 return        // []
+}
+
+#define macro FIND_POSITION_OF_RIGHTMOST_SET_BIT() = takes (0) returns (0) {
+    0x04 calldataload           // [x]
+    dup1                        // [x, x]
+    _RIGHT_MOST_UNSET_BIT()     // [rightMostUnsetBit, x]
+    xor                         // [x ^ rightMostUnsetBit == rightMostSetBit]
+    _GET_MOST_SIGNIFICANT_BIT() // [positionOfRightMostSetBit]
+    0x00 mstore                 // []
+    0x20 0x00 return            // []
+}
+
+#define macro FIND_POSITION_OF_RIGHTMOST_SET_BIT_NEGATION() = takes (0) returns (0) {
+    0x04 calldataload               // [x]
+    0x01                            // [1, x]
+    and                             // [x & 1]
+    iszero                          // [x & 1 == 0]
+    even jumpi                      // []
+    0x01                            // [1]
+    ret jump                        // [1]
+    even:
+        0x04 calldataload           // [x]
+        dup1                        // [x, x]
+        _INVERT_SIGN()              // [-x, x]
+        and                         // [x & -x]
+        _GET_MOST_SIGNIFICANT_BIT() // [positionOfRightMostSetBit]
+
+    ret:
+        0x00 mstore                 // []
+        0x20 0x00 return            // []
+}
+
+#define macro BITS_TO_FLIP() = takes (0) returns (0) {
+    // return (x ^ y) & ~(x & y);
+    0x04 calldataload     // [x]
+    0x24 calldataload     // [y, x]
+    xor                   // [x ^ y]
+    _COUNT_SET_BITS()
+    0x00 mstore           // []
+    0x20 0x00 return      // []
+}
+
+#define macro CALCULATE_XOR_TO_N() = takes (0) returns (0) {
+    0x0                   // [val]
+    0x04 calldataload     // [n, val]
+    0x1                   // [counter, n, val]
+    begin_while:          // [counter, n, val]
+        dup2              // [n, counter, n, val]
+        dup2              // [counter, n, counter, n, val]
+        gt                // [counter > n, counter, n, val]
+        ret jumpi         // [counter, n, val]
+        dup1              // [counter, counter, n, val]
+        swap3             // [val, counter, n, counter]
+        xor               // [val ^ counter == newVal, n, counter]
+        swap2             // [counter, n, newVal]
+        0x01 add          // [counter + 1, n, newVal]
+        begin_while jump  // [counter + 1, n, newVal]
+
+    ret:                  // [counter, n, val]
+        pop               // [n, val]
+        pop               // [val]
+        0x00 mstore       // []
+        0x20 0x00 return  // []
+}
+
+#define macro CALCULATE_XOR_TO_N_EFFICIENT() = takes(0) returns (0) {
+    // uint moduloN = N%4;
+    // if(moduloN == 0) {
+    //     result = N;
+    // } else if(moduloN == 1) {
+    //     result = 1;
+    // } else if(moduloN == 2) {
+    //     result = N + 1;
+    // } else {
+    //     result = 0;
+    // }
+    0x04 calldataload     // [n]
+    0x04                  // [4, n]
+    dup2                  // [n, 4, n]
+    mod                   // [n % 4, n]
+    dup1                  // [n % 4, n % 4, n]
+    iszero                // [n % 4 == 0, n % 4, n]
+    ret jumpi             // [n % 4, n]
+    0x01                  // [1, n % 4, n]
+    swap2                 // [n, n % 4, 1]
+    pop                   // [n % 4, 1]
+    dup1                  // [n % 4, n % 4, 1]
+    dup3                 // [1, n % 4, n % 4, 1]
+    eq                    // [n % 4 == 1, n % 4, 1]
+    ret jumpi             // [n % 4, 1]
+    swap1                 // [1, n % 4]
+    0x04 calldataload     // [n, 1, n % 4]
+    add                   // [n + 1, n % 4]
+    swap1                 // [n % 4, n + 1]
+    dup1                  // [n % 4, n % 4, n + 1]
+    0x02                  // [2, n % 4, n % 4, n + 1]
+    eq                    // [n % 4 == 2, n % 4, n + 1]
+    ret jumpi             // [n % 4, n + 1]
+    swap1                 // [n + 1, n % 4]
+    pop                   // [n % 4]
+    returndatasize        // [0, n % 4]
+    swap1                 // [n % 4, 0]
+    ret:                  // [n % 4, result]
+        pop               // [result]
+        0x00 mstore       // []
+        0x20 0x00 return  // []
+}
+
+#define macro FIND_SUM_EQUAL_TO_XOR() = takes (0) returns (0) {
+    // for (uint i; i <= n; ++i) {
+    //     if ((n ^ i) == (n + i)) {
+    //         ++counter;
+    //     }
+    // }
+    0x04 calldataload     // [n]
+    returndatasize        // [i, n]
+    returndatasize        // [counter, i, n]
+    swap2                 // [n, i, counter]
+    begin_while:          // [n, i, counter]
+        dup2              // [i, n, i, counter]
+        dup2              // [n, i, n, i, counter]
+        dup1              // [n, n, i, n, i, counter]
+        dup3              // [i, n, i, n, i, n, i, counter]
+        gt                // [i > n, n, i, n, i, counter]
+        ret jumpi         // [n, i, n, i, counter]
+        dup2              // [i, n, i, n, i, counter]
+        dup2              // [n, i, n, i, n, i, counter]
+        xor               // [n ^ i, n, i, n, i, counter]
+        swap2             // [i, n, n ^ i, n, i, counter]
+        add               // [n + i, n ^ i, n, i, counter]
+        eq                // [n + i == n ^ i, n, i, counter]
+        iszero            // [n + i != n ^ i, n, i, counter]
+        not_equal jumpi   // [n, i, counter]
+        swap2             // [counter, i, n]
+        0x01 add          // [oldCounter + 1 == counter, i, n]
+        swap2             // [n, i, counter]
+    not_equal:            // [n, i, counter]
+        swap1             // [i, n, counter]
+        0x01 add          // [i + 1, n, counter]
+        swap1             // [n, i + 1, counter]
+        begin_while jump  // [n, i + 1, counter]
+    ret:                  // [n, i, n, i, counter]
+        pop               // [i, n, i, counter]
+        pop               // [n, i, counter]
+        pop               // [i, counter]
+        pop               // [counter]
+        0x00 mstore       // []
+        0x20 0x00 return  // []
+}
+
+#define macro FIND_SUM_EQUAL_TO_XOR_EFFICIENT() = takes (0) returns (0) {
+    // uint unsetBits;
+    // while(n != 0) {
+    //     if(n & 1 == 0) {
+    //         ++unsetBits;
+    //     }
+    //     n >>= 1;
+    // }
+    // counter = (1 << unsetBits);
+    0x04 calldataload     // [n]
+    returndatasize        // [unsetBits, n]
+    begin_while:          // [unsetBits, n]
+        dup2              // [n, unsetBits, n]
+        iszero            // [n == 0, unsetBits, n]
+        ret jumpi         // [unsetBits, n]
+        dup2              // [n, unsetBits, n]
+        0x01 and          // [n & 1, unsetBits, n]
+        iszero            // [n & 1 == 0, unsetBits, n]
+        iszero            // [n & 1 != 0, unsetBits, n]
+        notzero jumpi     // [unsetBits, n]
+        0x01 add          // [unsetBits + 1, n]
+    notzero:              // [unsetBits, n]
+        swap1             // [n, unsetBits]
+        0x01 shr          // [n >> 1, unsetBits]
+        swap1             // [unsetBits, n >> 1]
+        begin_while jump  // [unsetBits, n]
+    ret:                  // [unsetBits, n]
+        0x01              // [1, unsetBits, n]
+        swap1             // [unsetBits, 1, n]
+        shl               // [1 << unsetBits, n]
+        swap1             // [n, 1 << unsetBits]
+        pop               // [1 << unsetBits]
+        0x00 mstore       // []
+        0x20 0x00 return  // []
+}
+
+#define macro FIND_MSB() = takes(0) returns (0) {
+    // n = n | (n >> 1); // Now starting 2 bits are set in n
+    // n = n | (n >> 2); // Now starting 4 bits are set in n
+    // n = n | (n >> 4); // Now starting 8 bits are set in n
+    // n = n | (n >> 8); // Now starting 16 bits are set in n
+    // n = n | (n >> 16); // Now starting 32 bits are set in n
+    // n = n | (n >> 32); // Now starting 64 bits are set in n
+    // n = n | (n >> 64); // Now starting 128 bits are set in n
+    // n = n | (n >> 128); // Now starting 256 bits are set in n
+
+    // n += 1; // Now it's 1 set bit (higher than the original MSB) and rest are 0s
+
+    // return (n >> 1);
+    0x04 calldataload    // [n]
+    dup1                 // [n, n]
+    0x01 shr             // [n >> 1, n]
+    or                   // [n | (n >> 1) == n]
+    dup1                 // [n, n]
+    0x02 shr             // [n >> 2, n]
+    or                   // [n | (n >> 2) == n]
+    dup1                 // [n, n]
+    0x04 shr             // [n >> 4, n]
+    or                   // [n | (n >> 4) == n]
+    dup1                 // [n, n]
+    0x08 shr             // [n >> 8, n]
+    or                   // [n | (n >> 8) == n]
+    dup1                 // [n, n]
+    0x10 shr             // [n >> 16, n]
+    or                   // [n | (n >> 16) == n]
+    dup1                 // [n, n]
+    0x20 shr             // [n >> 32, n]
+    or                   // [n | (n >> 32) == n]
+    dup1                 // [n, n]
+    0x40 shr             // [n >> 64, n]
+    or                   // [n | (n >> 64) == n]
+    dup1                 // [n, n]
+    0x80 shr             // [n >> 128, n]
+    or                   // [n | (n >> 128) == n]
+    0x01 add             // [n + 1 == n]
+    0x01 shr             // [n >> 1]
+    0x00 mstore          // []
+    0x20 0x00 return     // []
+}
+
+#define macro ADD_TWO_NUMBERS() = takes (0) returns (0) {
+    0x04 calldataload    // [x]
+    0x24 calldataload    // [y, x]
+    dup2                 // [x, y, x]
+    dup2                 // [y, x, y, x]
+    and                  // [x & y, x, y]
+    swap2                // [y, x, x & y]
+    or                   // [x | y, x & y]
+    add                  // [x | y + x & y]
+    0x00 mstore          // []
+    0x20 0x00 return     // []
+}
+
+
+
 #define macro MAIN() = takes (0) returns (0) {
     // Identify which function is being called.
     0x00 calldataload 0xE0 shr
@@ -219,6 +536,20 @@
     dup1 __FUNC_SIG(countSetBits) eq countSetBits jumpi
     dup1 __FUNC_SIG(findNthBool) eq findNthBool jumpi
     dup1 __FUNC_SIG(setNthBool) eq setNthBool jumpi
+    dup1 __FUNC_SIG(sameSign) eq sameSign jumpi
+    dup1 __FUNC_SIG(invertSign) eq invertSign jumpi
+    dup1 __FUNC_SIG(invertSign2) eq invertSign2 jumpi
+    dup1 __FUNC_SIG(isEven) eq isEven jumpi
+    dup1 __FUNC_SIG(rightMostUnsetBit) eq rightMostUnsetBit jumpi
+    dup1 __FUNC_SIG(findPositionOfRightmostSetBit) eq findPositionOfRightmostSetBit jumpi
+    dup1 __FUNC_SIG(findPositionOfRightmostSetBit_Negation) eq findPositionOfRightmostSetBit_Negation jumpi
+    dup1 __FUNC_SIG(bitsToFlip) eq bitsToFlip jumpi
+    dup1 __FUNC_SIG(calculateXorToN) eq calculateXorToN jumpi
+    dup1 __FUNC_SIG(calculateXorToNEfficient) eq calculateXorToNEfficient jumpi
+    dup1 __FUNC_SIG(findSumEqualToXor) eq findSumEqualToXor jumpi
+    dup1 __FUNC_SIG(findSumEqualToXorEfficient) eq findSumEqualToXorEfficient jumpi
+    dup1 __FUNC_SIG(findMSB) eq findMSB jumpi
+    dup1 __FUNC_SIG(addTwoNumbers) eq addTwoNumbers jumpi
 
     0x00 0x00 revert
 
@@ -261,4 +592,46 @@
     setNthBool:
         SET_NTH_BOOL()
 
-}
+    sameSign:
+        SAME_SIGN()
+
+    invertSign:
+        INVERT_SIGN()
+
+    invertSign2:
+        INVERT_SIGN()
+
+    isEven:
+        IS_EVEN()
+
+    rightMostUnsetBit:
+        RIGHT_MOST_UNSET_BIT()
+
+    findPositionOfRightmostSetBit:
+        FIND_POSITION_OF_RIGHTMOST_SET_BIT()
+
+    findPositionOfRightmostSetBit_Negation:
+        FIND_POSITION_OF_RIGHTMOST_SET_BIT_NEGATION()
+
+    bitsToFlip:
+        BITS_TO_FLIP()
+
+    calculateXorToN:
+        CALCULATE_XOR_TO_N()
+
+    calculateXorToNEfficient:
+        CALCULATE_XOR_TO_N_EFFICIENT()
+
+    findSumEqualToXor:
+        FIND_SUM_EQUAL_TO_XOR()
+
+    findSumEqualToXorEfficient:
+        FIND_SUM_EQUAL_TO_XOR_EFFICIENT()
+
+    findMSB:
+        FIND_MSB()
+
+    addTwoNumbers:
+        ADD_TWO_NUMBERS()
+
+ }
